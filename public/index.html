@@ -2,21 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Web Video Player</title>
-  <!-- Video.js CSS for player styling -->
+  <title>Transcoded Video Player</title>
+  <!-- Video.js CSS for styling -->
   <link href="https://vjs.zencdn.net/7.20.3/video-js.css" rel="stylesheet">
   <style>
-    /* Basic styling for the container, form, and player */
     body {
       font-family: Arial, sans-serif;
-      background-color: #f5f5f5;
+      background-color: #f2f2f2;
       margin: 0;
       padding: 20px;
     }
     .container {
       max-width: 800px;
       margin: auto;
-      background-color: #fff;
+      background: #fff;
       padding: 20px;
       box-shadow: 0 0 10px rgba(0,0,0,0.1);
     }
@@ -28,19 +27,20 @@
     }
     label {
       display: block;
-      margin-bottom: 5px;
       font-weight: bold;
+      margin-bottom: 5px;
     }
     input[type="text"] {
       width: 100%;
       padding: 8px;
-      font-size: 14px;
       box-sizing: border-box;
+      font-size: 16px;
     }
     button {
       padding: 10px 20px;
       font-size: 16px;
       cursor: pointer;
+      margin-top: 10px;
     }
     #errorMessage {
       color: red;
@@ -49,28 +49,25 @@
     }
     #player-container {
       margin-top: 20px;
+      display: none;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>Video Player</h1>
-    <!-- Form to enter video and subtitle URLs -->
+    <h1>Transcoded Video Player</h1>
+    <!-- Form to input the video URL -->
     <div id="form-container">
       <div class="form-group">
         <label for="videoUrl">Video URL</label>
         <input type="text" id="videoUrl" value="https://cdn.xentain.org/TestVideo.webm">
-      </div>
-      <div class="form-group">
-        <label for="subtitleUrl">Subtitle URL</label>
-        <input type="text" id="subtitleUrl" value="https://example.com/path/to/subtitles_en.srt">
       </div>
       <button id="loadVideo">Load Video</button>
       <div id="errorMessage"></div>
     </div>
 
     <!-- Container for the Video.js player -->
-    <div id="player-container" style="display:none;">
+    <div id="player-container">
       <video id="videoPlayer" class="video-js vjs-default-skin" controls preload="auto" width="800" height="450">
       </video>
     </div>
@@ -79,70 +76,41 @@
   <!-- Include Video.js library -->
   <script src="https://vjs.zencdn.net/7.20.3/video.min.js"></script>
   <script>
-    // Event listener for the "Load Video" button
     document.getElementById('loadVideo').addEventListener('click', async () => {
       const videoUrl = document.getElementById('videoUrl').value.trim();
-      const subtitleUrl = document.getElementById('subtitleUrl').value.trim();
       const errorMessage = document.getElementById('errorMessage');
       errorMessage.textContent = '';
-
+      
       if (!videoUrl) {
-        errorMessage.textContent = 'Please enter a valid video URL.';
+        errorMessage.textContent = 'Please enter a video URL.';
         return;
       }
 
       try {
-        // Fetch the processed video stream URL from the backend
-        const videoResponse = await fetch(`/video?url=${encodeURIComponent(videoUrl)}`);
-        if (!videoResponse.ok) {
+        // Call the backend /video endpoint to get the processed HLS stream URL
+        const response = await fetch(`/video?url=${encodeURIComponent(videoUrl)}`);
+        if (!response.ok) {
           throw new Error('Failed to fetch video stream from backend');
         }
-        const videoData = await videoResponse.json();
-        const streamUrl = videoData.streamUrl;
-        
-        // Display the player container
-        const playerContainer = document.getElementById('player-container');
-        playerContainer.style.display = 'block';
+        const data = await response.json();
+        const streamUrl = data.streamUrl;
+        console.log('Stream URL:', streamUrl);
 
-        // If a player already exists, dispose of it before re-initializing
+        // Display the player container.
+        document.getElementById('player-container').style.display = 'block';
+
+        // Dispose of any previous Video.js instance.
         if (window.player) {
           window.player.dispose();
         }
 
-        // Initialize the Video.js player
-        const player = videojs('videoPlayer');
-        window.player = player;
-        player.src({
+        // Initialize the Video.js player with the HLS stream.
+        window.player = videojs('videoPlayer');
+        window.player.src({
           src: streamUrl,
-          type: 'application/x-mpegURL'  // HLS stream type
+          type: 'application/x-mpegURL'
         });
-
-        // If a subtitle URL is provided, fetch and attach the subtitle track
-        if (subtitleUrl) {
-          const subtitleResponse = await fetch(`/subtitle?url=${encodeURIComponent(subtitleUrl)}&format=vtt`);
-          if (!subtitleResponse.ok) {
-            throw new Error('Failed to fetch subtitles from backend');
-          }
-          const subtitleText = await subtitleResponse.text();
-          const blob = new Blob([subtitleText], { type: 'text/vtt' });
-          const processedSubtitleUrl = URL.createObjectURL(blob);
-
-          // Remove existing subtitle tracks if any
-          const videoElement = player.el().querySelector('video');
-          videoElement.querySelectorAll('track').forEach(t => t.remove());
-
-          // Create and append a new track element for subtitles
-          const trackElement = document.createElement('track');
-          trackElement.kind = 'subtitles';
-          trackElement.label = 'English';
-          trackElement.srclang = 'en';
-          trackElement.src = processedSubtitleUrl;
-          trackElement.default = true;
-          videoElement.appendChild(trackElement);
-        }
-
-        // Auto-play the video once the source is set
-        player.play();
+        window.player.play();
       } catch (error) {
         console.error('Error loading video:', error);
         errorMessage.textContent = error.message;
