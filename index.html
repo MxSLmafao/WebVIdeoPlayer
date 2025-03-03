@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Client‑Side Video Player</title>
-  <!-- Video.js CSS for player styling -->
+  <title>Transcoded Video Player</title>
+  <!-- Video.js CSS for styling -->
   <link href="https://vjs.zencdn.net/7.20.3/video-js.css" rel="stylesheet">
   <style>
     body {
@@ -34,11 +34,13 @@
       width: 100%;
       padding: 8px;
       box-sizing: border-box;
+      font-size: 16px;
     }
     button {
       padding: 10px 20px;
       font-size: 16px;
       cursor: pointer;
+      margin-top: 10px;
     }
     #errorMessage {
       color: red;
@@ -47,13 +49,14 @@
     }
     #player-container {
       margin-top: 20px;
+      display: none;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h1>Video Player</h1>
-    <!-- Form to enter the video URL -->
+    <h1>Transcoded Video Player</h1>
+    <!-- Form to input the video URL -->
     <div id="form-container">
       <div class="form-group">
         <label for="videoUrl">Video URL</label>
@@ -64,7 +67,7 @@
     </div>
 
     <!-- Container for the Video.js player -->
-    <div id="player-container" style="display: none;">
+    <div id="player-container">
       <video id="videoPlayer" class="video-js vjs-default-skin" controls preload="auto" width="800" height="450">
       </video>
     </div>
@@ -73,89 +76,40 @@
   <!-- Include Video.js library -->
   <script src="https://vjs.zencdn.net/7.20.3/video.min.js"></script>
   <script>
-    // Determines the MIME type based on the video file extension.
-    function determineMimeType(url) {
-      if (url.endsWith('.mp4')) return 'video/mp4';
-      if (url.endsWith('.webm')) return 'video/webm';
-      if (url.endsWith('.mkv')) return 'video/x-matroska';
-      if (url.endsWith('.mov')) return 'video/quicktime';
-      // Fallback to mp4.
-      return 'video/mp4';
-    }
-
-    // Derives a subtitle URL from the given video URL.
-    // For example, "TestVideo.webm" becomes "TestVideo_en.vtt".
-    function deriveSubtitleUrl(videoUrl) {
-      try {
-        const urlObj = new URL(videoUrl);
-        const pathname = urlObj.pathname;
-        const dotIndex = pathname.lastIndexOf('.');
-        if (dotIndex === -1) return null;
-        const baseName = pathname.substring(0, dotIndex);
-        urlObj.pathname = baseName + '_en.vtt';
-        return urlObj.toString();
-      } catch (error) {
-        console.error('Error deriving subtitle URL:', error);
-        return null;
-      }
-    }
-
-    // Event listener for the "Load Video" button
     document.getElementById('loadVideo').addEventListener('click', async () => {
       const videoUrl = document.getElementById('videoUrl').value.trim();
       const errorMessage = document.getElementById('errorMessage');
       errorMessage.textContent = '';
-
+      
       if (!videoUrl) {
         errorMessage.textContent = 'Please enter a video URL.';
         return;
       }
 
       try {
-        // Dispose previous player instance if exists
-        if (window.player) {
-          window.player.dispose();
+        // Call the backend /video endpoint to get the processed HLS stream URL
+        const response = await fetch(`/video?url=${encodeURIComponent(videoUrl)}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch video stream from backend');
         }
+        const data = await response.json();
+        const streamUrl = data.streamUrl;
+        console.log('Stream URL:', streamUrl);
 
         // Display the player container.
         document.getElementById('player-container').style.display = 'block';
 
-        // Initialize the Video.js player.
-        window.player = videojs('videoPlayer');
-
-        // Set the video source with the determined MIME type.
-        window.player.src({
-          src: videoUrl,
-          type: determineMimeType(videoUrl)
-        });
-
-        // Attempt to load an external subtitle track derived from the video URL.
-        const subtitleUrl = deriveSubtitleUrl(videoUrl);
-        if (subtitleUrl) {
-          try {
-            // Check if the subtitle file exists via a HEAD request.
-            const headResponse = await fetch(subtitleUrl, { method: 'HEAD' });
-            if (headResponse.ok) {
-              // Remove existing subtitle tracks.
-              const videoElem = window.player.el().querySelector('video');
-              videoElem.querySelectorAll('track').forEach(t => t.remove());
-              // Create and append a new track element.
-              const trackElement = document.createElement('track');
-              trackElement.kind = 'subtitles';
-              trackElement.label = 'English';
-              trackElement.srclang = 'en';
-              trackElement.src = subtitleUrl;
-              trackElement.default = true;
-              videoElem.appendChild(trackElement);
-            } else {
-              console.log('Subtitle file not found at', subtitleUrl);
-            }
-          } catch (e) {
-            console.error('Error checking subtitle file:', e);
-          }
+        // Dispose of any previous Video.js instance.
+        if (window.player) {
+          window.player.dispose();
         }
 
-        // Auto-play the video once the source is set.
+        // Initialize the Video.js player with the HLS stream.
+        window.player = videojs('videoPlayer');
+        window.player.src({
+          src: streamUrl,
+          type: 'application/x-mpegURL'
+        });
         window.player.play();
       } catch (error) {
         console.error('Error loading video:', error);
