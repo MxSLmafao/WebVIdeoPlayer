@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Client‑Side Video Player</title>
+  <!-- Video.js CSS for player styling -->
+  <link href="https://vjs.zencdn.net/7.20.3/video-js.css" rel="stylesheet">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f2f2f2;
+      margin: 0;
+      padding: 20px;
+    }
+    .container {
+      max-width: 800px;
+      margin: auto;
+      background: #fff;
+      padding: 20px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+    }
+    h1 {
+      text-align: center;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 8px;
+      box-sizing: border-box;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    #errorMessage {
+      color: red;
+      margin-top: 10px;
+      text-align: center;
+    }
+    #player-container {
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Video Player</h1>
+    <!-- Form to enter the video URL -->
+    <div id="form-container">
+      <div class="form-group">
+        <label for="videoUrl">Video URL</label>
+        <input type="text" id="videoUrl" value="https://cdn.xentain.org/TestVideo.webm">
+      </div>
+      <button id="loadVideo">Load Video</button>
+      <div id="errorMessage"></div>
+    </div>
+
+    <!-- Container for the Video.js player -->
+    <div id="player-container" style="display: none;">
+      <video id="videoPlayer" class="video-js vjs-default-skin" controls preload="auto" width="800" height="450">
+      </video>
+    </div>
+  </div>
+
+  <!-- Include Video.js library -->
+  <script src="https://vjs.zencdn.net/7.20.3/video.min.js"></script>
+  <script>
+    // Determines the MIME type based on the video file extension.
+    function determineMimeType(url) {
+      if (url.endsWith('.mp4')) return 'video/mp4';
+      if (url.endsWith('.webm')) return 'video/webm';
+      if (url.endsWith('.mkv')) return 'video/x-matroska';
+      if (url.endsWith('.mov')) return 'video/quicktime';
+      // Fallback to mp4.
+      return 'video/mp4';
+    }
+
+    // Derives a subtitle URL from the given video URL.
+    // For example, "TestVideo.webm" becomes "TestVideo_en.vtt".
+    function deriveSubtitleUrl(videoUrl) {
+      try {
+        const urlObj = new URL(videoUrl);
+        const pathname = urlObj.pathname;
+        const dotIndex = pathname.lastIndexOf('.');
+        if (dotIndex === -1) return null;
+        const baseName = pathname.substring(0, dotIndex);
+        urlObj.pathname = baseName + '_en.vtt';
+        return urlObj.toString();
+      } catch (error) {
+        console.error('Error deriving subtitle URL:', error);
+        return null;
+      }
+    }
+
+    // Event listener for the "Load Video" button
+    document.getElementById('loadVideo').addEventListener('click', async () => {
+      const videoUrl = document.getElementById('videoUrl').value.trim();
+      const errorMessage = document.getElementById('errorMessage');
+      errorMessage.textContent = '';
+
+      if (!videoUrl) {
+        errorMessage.textContent = 'Please enter a video URL.';
+        return;
+      }
+
+      try {
+        // Dispose previous player instance if exists
+        if (window.player) {
+          window.player.dispose();
+        }
+
+        // Display the player container.
+        document.getElementById('player-container').style.display = 'block';
+
+        // Initialize the Video.js player.
+        window.player = videojs('videoPlayer');
+
+        // Set the video source with the determined MIME type.
+        window.player.src({
+          src: videoUrl,
+          type: determineMimeType(videoUrl)
+        });
+
+        // Attempt to load an external subtitle track derived from the video URL.
+        const subtitleUrl = deriveSubtitleUrl(videoUrl);
+        if (subtitleUrl) {
+          try {
+            // Check if the subtitle file exists via a HEAD request.
+            const headResponse = await fetch(subtitleUrl, { method: 'HEAD' });
+            if (headResponse.ok) {
+              // Remove existing subtitle tracks.
+              const videoElem = window.player.el().querySelector('video');
+              videoElem.querySelectorAll('track').forEach(t => t.remove());
+              // Create and append a new track element.
+              const trackElement = document.createElement('track');
+              trackElement.kind = 'subtitles';
+              trackElement.label = 'English';
+              trackElement.srclang = 'en';
+              trackElement.src = subtitleUrl;
+              trackElement.default = true;
+              videoElem.appendChild(trackElement);
+            } else {
+              console.log('Subtitle file not found at', subtitleUrl);
+            }
+          } catch (e) {
+            console.error('Error checking subtitle file:', e);
+          }
+        }
+
+        // Auto-play the video once the source is set.
+        window.player.play();
+      } catch (error) {
+        console.error('Error loading video:', error);
+        errorMessage.textContent = error.message;
+      }
+    });
+  </script>
+</body>
+</html>
