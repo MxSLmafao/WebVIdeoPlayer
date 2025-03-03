@@ -1,0 +1,5 @@
+# config.yml
+
+app:
+  port: 6789       # The port on which the application will run.
+  env: development # The application environment (e.g., development, production).
